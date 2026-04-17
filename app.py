@@ -1,110 +1,146 @@
-import streamlit as st
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import os
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
-st.set_page_config(layout="wide")
+from flask import Flask, Response, jsonify, render_template, request
 
-# ---------- STYLE ----------
-st.markdown("""
-<style>
-body {
-    background-color: #0e1117;
-}
-.title {
-    font-size: 42px;
-    font-weight: bold;
-    color: #00f5d4;
-}
-.subtitle {
-    color: #aaaaaa;
-}
-.card {
-    background-color: #1c1f26;
-    padding: 25px;
-    border-radius: 15px;
-    text-align: center;
-}
-.metric {
-    font-size: 30px;
-    font-weight: bold;
-    color: #00f5d4;
-}
-.label {
-    color: #bbbbbb;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------- HEADER ----------
-st.markdown("<div class='title'>⚡ Powered by VoltCast</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>AI Smart Energy Optimizer</div>", unsafe_allow_html=True)
-
-# ---------- APPLIANCE ----------
-st.write("### 🔌 Select Your Appliance")
-
-appliance = st.selectbox(
-    "",
-    ["Washing Machine", "Dishwasher", "EV Charging", "Air Conditioner", "Water Pump"]
+from ai_service import generate_ai_response
+from model import (
+    APPLIANCE_PROFILES,
+    DEFAULT_APPLIANCE,
+    build_appliance_insights,
+    build_duck_curve,
+    build_energy_snapshot,
 )
 
-# ---------- DATA ----------
-hours = np.arange(24)
 
-solar = 160 * np.exp(-0.5 * (hours - 12)**2 / 6)
-wind = 25 + 15 * np.sin((hours - 2) / 24 * 2 * np.pi)
+app = Flask(__name__)
 
-renewable = np.maximum(0, solar + wind)
+OPENWEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
+DEFAULT_CITY = os.getenv("DEFAULT_CITY", "New Delhi")
 
-demand = (
-    60 +
-    70 * np.exp(-0.5 * (hours - 8)**2 / 3) +
-    110 * np.exp(-0.5 * (hours - 19)**2 / 4)
-)
 
-grid = np.maximum(0, demand - renewable)
+def fetch_weather(city):
+    """Fetch current weather from OpenWeather, with demo data as a fallback."""
+    api_key = os.getenv("OPENWEATHER_API_KEY", "").strip()
 
-df = pd.DataFrame({
-    "hour": hours,
-    "renewable": renewable,
-    "demand": demand,
-    "grid": grid
-})
+    if not api_key:
+        return {
+            "city": city,
+            "temperature": 31,
+            "cloud_percentage": 25,
+            "humidity": 48,
+            "description": "demo clear sky",
+            "icon": "01d",
+            "source": "Demo data - set OPENWEATHER_API_KEY for live weather",
+        }
 
-# ---------- AI ----------
-best_hour = int(df["renewable"].idxmax())
+    query = urlencode({"q": city, "appid": api_key, "units": "metric"})
+    url = f"{OPENWEATHER_URL}?{query}"
 
-st.write("### 🤖 AI Recommendation")
-st.success(f"Use your **{appliance} at {best_hour}:00 hours** ⚡")
+    try:
+        with urlopen(url, timeout=8) as response:
+            data = response.read()
+    except (HTTPError, URLError, TimeoutError) as exc:
+        return {
+            "city": city,
+            "temperature": 31,
+            "cloud_percentage": 25,
+            "humidity": 48,
+            "description": "fallback clear sky",
+            "icon": "01d",
+            "source": f"Fallback data - OpenWeather request failed: {exc}",
+        }
 
-# ---------- METRICS ----------
-st.write("### 📊 Impact")
+    weather = json.loads(data.decode("utf-8"))
+    description = "current weather"
+    icon = "01d"
+    if weather.get("weather"):
+        description = weather["weather"][0].get("description", description)
+        icon = weather["weather"][0].get("icon", icon)
 
-col1, col2, col3 = st.columns(3)
+    return {
+        "city": weather.get("name", city),
+        "temperature": round(weather.get("main", {}).get("temp", 0), 1),
+        "cloud_percentage": int(weather.get("clouds", {}).get("all", 0)),
+        "humidity": int(weather.get("main", {}).get("humidity", 0)),
+        "description": description,
+        "icon": icon,
+        "source": "Live OpenWeather data",
+    }
 
-energy_saved = df["renewable"].sum()
-money_saved = energy_saved * 0.35
-co2_saved = energy_saved * 0.8
 
-with col1:
-    st.markdown(f"<div class='card'><div class='metric'>{energy_saved:.0f}</div><div class='label'>Energy Saved</div></div>", unsafe_allow_html=True)
+def build_dashboard_data(city):
+    weather = fetch_weather(city)
+    snapshot = build_energy_snapshot(weather["cloud_percentage"])
+    appliance_insights = build_appliance_insights(weather["cloud_percentage"])
+    selected_appliance = request.args.get("appliance", DEFAULT_APPLIANCE).strip() or DEFAULT_APPLIANCE
 
-with col2:
-    st.markdown(f"<div class='card'><div class='metric'>₹{money_saved:.0f}</div><div class='label'>Money Saved</div></div>", unsafe_allow_html=True)
+    if selected_appliance not in APPLIANCE_PROFILES:
+        selected_appliance = DEFAULT_APPLIANCE
 
-with col3:
-    st.markdown(f"<div class='card'><div class='metric'>{co2_saved:.0f} kg</div><div class='label'>CO₂ Reduced</div></div>", unsafe_allow_html=True)
+    return {
+        "weather": weather,
+        "solar": snapshot["solar_output"],
+        "voltage": snapshot["voltage"],
+        "recommendation": snapshot["best_time"],
+        "status": "ON" if snapshot["solar_output"] > 70 else "OFF",
+        "duck_curve": build_duck_curve(weather["cloud_percentage"]),
+        "appliance_options": [
+            {"id": key, "label": profile["label"]}
+            for key, profile in APPLIANCE_PROFILES.items()
+        ],
+        "appliance_insights": appliance_insights,
+        "selected_appliance": selected_appliance,
+    }
 
-# ---------- GRAPH ----------
-st.write("### 🦆 Duck Curve")
 
-fig, ax = plt.subplots()
+@app.route("/")
+def dashboard():
+    city = request.args.get("city", DEFAULT_CITY).strip() or DEFAULT_CITY
+    data = build_dashboard_data(city)
+    return render_template("index.html", data=data)
 
-ax.plot(df["hour"], df["demand"], label="Demand")
-ax.plot(df["hour"], df["renewable"], label="Renewable")
 
-ax.set_xlabel("Hour")
-ax.set_ylabel("Energy")
-ax.legend()
+@app.route("/status")
+def status():
+    city = request.args.get("city", DEFAULT_CITY).strip() or DEFAULT_CITY
+    data = build_dashboard_data(city)
+    return Response(data["status"], mimetype="text/plain")
 
-st.pyplot(fig)
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    payload = request.get_json(silent=True) or {}
+    query = str(payload.get("query", "")).strip()
+    city = str(payload.get("city", DEFAULT_CITY)).strip() or DEFAULT_CITY
+
+    if not query:
+        return jsonify({"response": "Ask me about solar output, voltage, or appliances."})
+
+    data = build_dashboard_data(city)
+    ai_result = generate_ai_response(
+        query,
+        data["weather"],
+        data["solar"],
+        data["voltage"],
+    )
+
+    return jsonify(
+        {
+            "response": ai_result["response"],
+            "ai_mode": ai_result["mode"],
+            "model": ai_result["model"],
+            "solar": data["solar"],
+            "voltage": data["voltage"],
+            "status": data["status"],
+            "recommendation": data["recommendation"],
+            "weather": data["weather"],
+        }
+    )
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

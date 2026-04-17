@@ -1,0 +1,22 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 467-681-865
+127.0.0.1 - - [17/Apr/2026 10:54:48] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:55:24] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 10:55:24] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:30] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:30] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [17/Apr/2026 11:11:33] "GET /?city=New+Delhi HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:42] "GET /?city=Bengaluru+Urban HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:43] "GET /?city=Bengaluru+Urban HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:44] "GET /?city=Bengaluru+Urban HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:44] "GET /?city=Bengaluru+Urban HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:44] "GET /?city=Bengaluru+Urban HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:11:52] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:12:08] "GET /?city=Bengaluru HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:12:09] "GET /?city=Bengaluru HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:12:09] "GET /?city=Bengaluru HTTP/1.1" 200 -
+127.0.0.1 - - [17/Apr/2026 11:12:09] "GET /?city=Bengaluru HTTP/1.1" 200 -
